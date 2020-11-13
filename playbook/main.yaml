@@ -1,0 +1,109 @@
+---
+- name: Install DataStage
+  hosts: all
+
+  tasks:
+    - name: Fetch the variables from var file
+      include_vars:
+        file: ../vars/main.yml
+
+    - name: Install DataStage dependencies
+      yum:
+        name:
+          - unzip
+          - glibc
+          - libXp
+          - libXau
+          - libXext
+          - libX11
+          - libxcb
+          - libXmu
+          - libXtst
+          - nss-softokn-freebl
+          - bc
+          - pam.i686
+          - elfutils
+          - lsof
+          - libaio
+          - gcc-c++
+          - ed
+          - perl
+          - wget
+          - less
+          - net-tools
+          - sed
+          - grep
+        state: present
+
+    - name: Upgrade all packages
+      yum:
+        name: '*'
+        state: latest
+
+    - name: Copy license files
+      copy:
+        src: "{{ LOCAL_DIR }}IS_V11711_EE_bundle_spec_file.zip"
+        dest: /opt/IS_V11711_EE_bundle_spec_file.zip
+        force: no
+
+    - name: Copy install files
+      copy:
+        src: "{{ LOCAL_DIR }}IS_V11711_Linux_x86_multi.tar.gz"
+        dest: /opt/IS_V11711_Linux_x86_multi.tar.gz
+        force: no
+
+    - name: Unarchive the install files
+      unarchive:
+        src: /opt/IS_V11711_Linux_x86_multi.tar.gz
+        dest: /opt
+        remote_src: yes
+
+    - name: Unarchive the license file
+      unarchive:
+        src: /opt/IS_V11711_EE_bundle_spec_file.zip
+        dest: /opt/is-suite
+        remote_src: yes
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+
+    - name: Increase msgmax
+      ansible.posix.sysctl:
+        name: kernel.msgmax
+        value: "65536"
+
+    - name: Increase msgmnb
+      ansible.posix.sysctl:
+        name: kernel.msgmnb
+        value: "65536"
+
+    - name: Increase kernel semaphores
+      ansible.posix.sysctl:
+        name: kernel.sem
+        value: "250 256000 32 1024"
+
+    - name: Increase number of open files
+      community.general.pam_limits:
+        domain: root
+        limit_type: "-"
+        limit_item: nofile
+        value: "65535"
+
+    - name: Increase ulimit
+      shell: ulimit -n 65535
+
+    - name: Copy over config file
+      ansible.builtin.template:
+        src: ../templates/responsefile.txt
+        dest: /opt/is-suite
+
+    - name: Run pre-check
+      shell:
+        cmd: ./setup -reportOnly -rsp responsefile.txt
+        chdir: /opt/is-suite/
+
+    - name: Run installer
+      shell:
+        cmd: ./setup -rsp responsefile.txt -verbose
+        chdir: /opt/is-suite/
